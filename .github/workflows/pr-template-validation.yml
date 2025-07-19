@@ -1,0 +1,40 @@
+name: Validate PR Template Content
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check-template:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR Template Sections
+        run: |
+          echo "Checking PR Body..."
+
+          BODY=$(jq -r .pull_request.body "$GITHUB_EVENT_PATH")
+
+          validate_section() {
+            local section_title="$1"
+            local placeholder="$2"
+
+            # Extract the content under the section
+            section_content=$(echo "$BODY" | awk "/^### $section_title/{flag=1; next} /^###/{flag=0} flag")
+
+            echo "Section [$section_title]:"
+            echo "$section_content"
+
+            # Trim whitespace
+            section_content=$(echo "$section_content" | sed '/^\s*$/d' | tr -d '\r')
+
+            if [[ -z "$section_content" || "$section_content" == "$placeholder" ]]; then
+              echo "❌ Section '$section_title' is empty or has placeholder text."
+              exit 1
+            fi
+          }
+
+          validate_section "Description" "_Provide a summary of the changes made in this PR._"
+          validate_section "Problem" "_Provide Problem for the changes made in this PR._"
+          validate_section "Root Cause" "_Provide root cause of the changes made in this PR._"
+          validate_section "Solution" "_Provide solution made for the root cause changes made in this PR._"

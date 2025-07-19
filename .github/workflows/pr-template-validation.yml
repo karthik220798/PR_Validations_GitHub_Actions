@@ -10,6 +10,7 @@ permissions:
 jobs:
   check-template:
     runs-on: ubuntu-latest
+
     steps:
       - name: Validate PR Template Sections
         id: validate
@@ -26,14 +27,12 @@ jobs:
             local section_title="$1"
             local placeholder="$2"
 
-            # Extract content between section heading and next ###
             section_content=$(echo "$BODY" | awk "/^### $section_title/{flag=1; next} /^###/{flag=0} flag")
 
-            # Clean whitespace
             section_content=$(echo "$section_content" | sed '/^\s*$/d' | tr -d '\r')
 
             if [[ -z "$section_content" || "$section_content" == "$placeholder" ]]; then
-              ERRORS+="❌ **$section_title** is missing or contains placeholder text.\n"
+              ERRORS+=$'❌ **'"$section_title"'** is missing or contains placeholder text.\n'
             fi
           }
 
@@ -42,9 +41,8 @@ jobs:
           validate_section "Root Cause" "_Provide root cause of the changes made in this PR._"
           validate_section "Solution" "_Provide solution made for the root cause changes made in this PR._"
 
-          echo "errors<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$ERRORS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Store error string in a temp file to pass to next step
+          echo "$ERRORS" > errors.txt
 
           if [[ -n "$ERRORS" ]]; then
             exit 1
@@ -57,7 +55,7 @@ jobs:
 
 The following issues were found in your PR description:
 
-${{ steps.validate.outputs.errors }}
+$(cat errors.txt)
 
 Please update your PR description to resolve these issues."
 

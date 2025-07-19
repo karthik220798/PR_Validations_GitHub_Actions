@@ -24,7 +24,7 @@ jobs:
           python-version: '3.x'
 
       - name: Validate PR Template Sections and Content
-        run: python .github/scripts/validate_pr_template.py # Execute the Python script
+        run: python .github/Scripts/validate_pr_template.py # Execute the Python script
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           REQUIRED_SECTIONS: |

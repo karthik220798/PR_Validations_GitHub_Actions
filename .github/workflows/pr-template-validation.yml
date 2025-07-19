@@ -1,64 +1,59 @@
-name: Validate PR Template Content
+name: PR Template Validation
 
 on:
   pull_request:
-    types: [opened, edited, synchronize]
-
-permissions:
-  pull-requests: write
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
 
 jobs:
-  check-template:
+  validate-pr-template:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read # Grant read permission to access the PR body [1]
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # Action to checkout your repository code
+
       - name: Validate PR Template Sections
-        id: validate
         run: |
-          echo "Checking PR Body..."
+          # Get the PR body from the GitHub event payload
+          PR_BODY="${{ github.event.pull_request.body }}"
 
-          BODY=$(jq -r .pull_request.body "$GITHUB_EVENT_PATH")
-          PR_NUMBER=$(jq -r .pull_request.number "$GITHUB_EVENT_PATH")
-          REPO_FULL=$(jq -r .repository.full_name "$GITHUB_EVENT_PATH")
+          # Define the required sections/headings
+          REQUIRED_SECTIONS=(
+            "### Description"
+            "### Problem"
+            "### Root Cause"
+            "### Solution"
+          )
 
-          ERRORS=""
+          ALL_SECTIONS_PRESENT=true
 
-          validate_section() {
-            local section_title="$1"
-            local placeholder="$2"
+          echo "Checking PR body for required sections..."
 
-            section_content=$(echo "$BODY" | awk "/^### $section_title/{flag=1; next} /^###/{flag=0} flag")
-            section_content=$(echo "$section_content" | sed '/^\s*$/d' | tr -d '\r')
-
-            if [[ -z "$section_content" || "$section_content" == "$placeholder" ]]; then
-              ERRORS="${ERRORS}❌ **${section_title}** is missing or contains placeholder text.\n"
+          for section in "${REQUIRED_SECTIONS[@]}"; do
+            # Use grep to check if the section heading exists in the PR body
+            # The -F option treats the pattern as a fixed string
+            # The -q option makes grep quiet, only returning exit status
+            if ! echo "$PR_BODY" | grep -Fq "$section"; then
+              echo "❌ Missing required section: '$section'"
+              ALL_SECTIONS_PRESENT=false
+            else
+              echo "✅ Found section: '$section'"
+              # Optional: Add more advanced checks here to ensure content exists after the heading.
+              # For example, you could check if the text immediately following the heading
+              # is not just whitespace or the start of another heading.
+              # This would require more complex string manipulation, possibly with Python or awk.
             fi
-          }
+          done
 
-          validate_section "Description" "_Provide a summary of the changes made in this PR._"
-          validate_section "Problem" "_Provide Problem for the changes made in this PR._"
-          validate_section "Root Cause" "_Provide root cause of the changes made in this PR._"
-          validate_section "Solution" "_Provide solution made for the root cause changes made in this PR._"
-
-          echo "$ERRORS" > errors.txt
-
-          if [[ -n "$ERRORS" ]]; then
-            exit 1
+          if [ "$ALL_SECTIONS_PRESENT" = false ]; then
+            echo "::error::PR template validation failed. One or more required sections are missing or incorrectly formatted."
+            exit 1 # Fail the job if any section is missing [8]
+          else
+            echo "All required PR template sections are present."
           fi
-
-      - name: Comment on PR if Validation Fails
-        if: failure()
-        run: |
-          COMMENT_BODY="🚫 **PR Template Validation Failed** 🚫
-
-The following issues were found in your PR description:
-
-$(cat errors.txt)
-
-Please update your PR description to resolve these issues."
-
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -nc --arg body "$COMMENT_BODY" '{body: $body}')" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"

@@ -28,11 +28,10 @@ jobs:
             local placeholder="$2"
 
             section_content=$(echo "$BODY" | awk "/^### $section_title/{flag=1; next} /^###/{flag=0} flag")
-
             section_content=$(echo "$section_content" | sed '/^\s*$/d' | tr -d '\r')
 
             if [[ -z "$section_content" || "$section_content" == "$placeholder" ]]; then
-              ERRORS+=$'❌ **'"$section_title"'** is missing or contains placeholder text.\n'
+              ERRORS="${ERRORS}❌ **${section_title}** is missing or contains placeholder text.\n"
             fi
           }
 
@@ -41,7 +40,6 @@ jobs:
           validate_section "Root Cause" "_Provide root cause of the changes made in this PR._"
           validate_section "Solution" "_Provide solution made for the root cause changes made in this PR._"
 
-          # Store error string in a temp file to pass to next step
           echo "$ERRORS" > errors.txt
 
           if [[ -n "$ERRORS" ]]; then

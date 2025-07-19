@@ -4,33 +4,36 @@ on:
   pull_request:
     types: [opened, edited, synchronize]
 
+permissions:
+  pull-requests: write
+
 jobs:
   check-template:
     runs-on: ubuntu-latest
-
     steps:
       - name: Validate PR Template Sections
+        id: validate
         run: |
           echo "Checking PR Body..."
 
           BODY=$(jq -r .pull_request.body "$GITHUB_EVENT_PATH")
+          PR_NUMBER=$(jq -r .pull_request.number "$GITHUB_EVENT_PATH")
+          REPO_FULL=$(jq -r .repository.full_name "$GITHUB_EVENT_PATH")
+
+          ERRORS=""
 
           validate_section() {
             local section_title="$1"
             local placeholder="$2"
 
-            # Extract the content under the section
+            # Extract content between section heading and next ###
             section_content=$(echo "$BODY" | awk "/^### $section_title/{flag=1; next} /^###/{flag=0} flag")
 
-            echo "Section [$section_title]:"
-            echo "$section_content"
-
-            # Trim whitespace
+            # Clean whitespace
             section_content=$(echo "$section_content" | sed '/^\s*$/d' | tr -d '\r')
 
             if [[ -z "$section_content" || "$section_content" == "$placeholder" ]]; then
-              echo "❌ Section '$section_title' is empty or has placeholder text."
-              exit 1
+              ERRORS+="❌ **$section_title** is missing or contains placeholder text.\n"
             fi
           }
 
@@ -38,3 +41,28 @@ jobs:
           validate_section "Problem" "_Provide Problem for the changes made in this PR._"
           validate_section "Root Cause" "_Provide root cause of the changes made in this PR._"
           validate_section "Solution" "_Provide solution made for the root cause changes made in this PR._"
+
+          echo "errors<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$ERRORS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [[ -n "$ERRORS" ]]; then
+            exit 1
+          fi
+
+      - name: Comment on PR if Validation Fails
+        if: failure()
+        run: |
+          COMMENT_BODY="🚫 **PR Template Validation Failed** 🚫
+
+The following issues were found in your PR description:
+
+${{ steps.validate.outputs.errors }}
+
+Please update your PR description to resolve these issues."
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg body "$COMMENT_BODY" '{body: $body}')" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"

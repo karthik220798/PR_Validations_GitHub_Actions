@@ -12,48 +12,23 @@ jobs:
   validate-pr-template:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read # Grant read permission to access the PR body [1]
+      pull-requests: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Action to checkout your repository code
+        uses: actions/checkout@v4
 
-      - name: Validate PR Template Sections
-        run: |
-          # Get the PR body from the GitHub event payload
-          PR_BODY="${{ github.event.pull_request.body }}"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
-          # Define the required sections/headings
-          REQUIRED_SECTIONS=(
-            "### Description"
-            "### Problem"
-            "### Root Cause"
-            "### Solution"
-          )
-
-          ALL_SECTIONS_PRESENT=true
-
-          echo "Checking PR body for required sections..."
-
-          for section in "${REQUIRED_SECTIONS[@]}"; do
-            # Use grep to check if the section heading exists in the PR body
-            # The -F option treats the pattern as a fixed string
-            # The -q option makes grep quiet, only returning exit status
-            if ! echo "$PR_BODY" | grep -Fq "$section"; then
-              echo "❌ Missing required section: '$section'"
-              ALL_SECTIONS_PRESENT=false
-            else
-              echo "✅ Found section: '$section'"
-              # Optional: Add more advanced checks here to ensure content exists after the heading.
-              # For example, you could check if the text immediately following the heading
-              # is not just whitespace or the start of another heading.
-              # This would require more complex string manipulation, possibly with Python or awk.
-            fi
-          done
-
-          if [ "$ALL_SECTIONS_PRESENT" = false ]; then
-            echo "::error::PR template validation failed. One or more required sections are missing or incorrectly formatted."
-            exit 1 # Fail the job if any section is missing [8]
-          else
-            echo "All required PR template sections are present."
-          fi
+      - name: Validate PR Template Sections and Content
+        run: python .github/scripts/validate_pr_template.py # Execute the Python script
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          REQUIRED_SECTIONS: |
+            ### Description
+            ### Problem
+            ### Root Cause
+            ### Solution
